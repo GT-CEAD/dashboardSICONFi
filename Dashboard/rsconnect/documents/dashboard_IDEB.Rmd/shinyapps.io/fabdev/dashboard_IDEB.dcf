@@ -1,0 +1,12 @@
+name: dashboard_IDEB
+title: dashboard_IDEB
+username:
+account: fabdev
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1173363
+bundleId: 2404026
+url: https://fabdev.shinyapps.io/dashboard_IDEB/
+when: 1568145097.61328
+asMultiple: FALSE
+asStatic: FALSE

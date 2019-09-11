@@ -1,0 +1,427 @@
+---
+title: "Impacto de gasto em educação no ensino fundamental municipal"
+output: 
+  flexdashboard::flex_dashboard:
+    social: menu
+    source_code: embed    
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(dplyr)
+library(shiny)
+library(ggplot2)
+library(stringr)
+load("Data/df_join_cluster_finais.RData")
+load("Data/municipios.RData")
+load("Data/df_outliers.RData")
+```
+
+Análise por estado
+=====================================  
+
+
+Inputs {.sidebar data-width=150}
+-----------------------------------------------------------------------
+
+
+```{r}
+UF<- (df_join_cluster_finais%>%
+    distinct(UF)%>%  
+    arrange(UF) %>%
+  select(UF))$UF
+
+municipio_disp <- (municipios%>%
+                  inner_join(df_join_cluster_finais) %>%     
+  mutate(mun_cod_nome = paste0(CO_MUNICIPIO,"-", str_sub(Instituicao,25,300)))
+   %>%
+    arrange(desc(Indicador_Escola)))$mun_cod_nome
+
+escola<- (df_join_cluster_finais%>%
+      arrange(desc(Indicador_Escola)))$Nome_Escola
+  
+selectInput ("i_UF","Escolha o estado", choices =UF, selected = UF[c(6,25)] ,multiple = TRUE) 
+selectInput ("i_mun","Escolha o municipio", choices =municipio_disp, selected = municipio_disp[1] ,multiple = TRUE)
+selectInput ("i_escola","Escolha a escola", choices =escola, selected = escola[1] ,multiple = TRUE)
+```
+
+Column {data-width=300}
+-----------------------------------------------------------------------
+
+### Distribuição das escolas por estado
+
+Esse dashboard é composto por uma série de análises que buscam trazer alguns achados sobre qual o papel do gasto público municipal na qualidade do ensino fundamental dos anos finais das escolas municipais. Para tanto, foram recuperados dados de 2017 para as seguintes bases:
+
+- Despesas em educação dos municípios brasileiros disponíveis no <a href="https://siconfi.tesouro.gov.br/siconfi/index.jsf">SICONFI</a>. 
+
+- dados do IDEB com as notas das escolas
+
+- dados do Censo Escolar do INEP nas tabelas turmas e escolas. 
+
+
+Os dados com as notas do IDEB foram cruzados com os dados do SICONFI dos municípios brasileiros. Daí conseguiu-se fazer uma relação entre gastos de município e suas médias do IDEB. Para poder caracterizar as escolas que foram avaliadas no IDEB foi feito mais um cruzamento de dados, dessa vez com o Censo Escolar. O conjunto de dados gerado por esses cruzamentos de base foi submetido a algoritmo de classificação para identificação de elementos importantes na determinação de notas do IDEB. Destaca-se aqui que a presença de alguns valores de despesa por aluno matriculado expressivamente maior do que o normal. Isso levou à exclusão dos dos dados associados a esses valores anormais quando da execução do algoritmo. 
+
+Na segunda coluna, logo ao lado deste texto, são exibidos dois gráficos mostrando no eixo horizontal uma aproximação da despesa por escola dada pelo produto entre gasto do muncípío em educação por aluno e o número de alunos de uma escola. No primeiro gráfico, a gradação de cores mostra que as escolas com gastos supostamente maiores estão fortemente associados ao maior gasto municipal por aluno. 
+
+Já a segunda figura tem na gradação de cores o número de alunos matriculados nas escolas. Nesse caso, percebe-se que há uma uniformidade maior na cor, indicando que a variação da quantidade de alunos não é relevante. Os dois gráficos sugerem então que a aproximação da despesa por escola recebe mais influência do gasto do município em educação por aluno do que do número de alunos por escola.
+
+As duas figuras da segunda coluna mostram uma figura na forma de elipse com uma inclinação que permite constatar que maiores gastos em educação fundamental para as séries finais implicam em maiores notas do IDEB. Os diversos outros gráficos desse dashboard ajudam a investigar elementos que possam estar por trás da ênfase do gasto sob a perspectiva de melhoras na nota do IDEB.
+
+Na última coluna há três abas relacionadas a gráficos dinâmicos. A aba **Estado** começa mostrando a distribuição de notas e gastos por escola para Ceará e São Paulo. A condição mais importante para a determinação da média do IDEB das escola municipais foi o fato da escola estar localizada no estado do Ceará, enquanto que a segunda condição é a escola estar localizada no estado de São Paulo. Para o caso do Ceará percebe-se a predominância de escolas num quadrante em que estão as que desempenham melhor e gastam menos. Já São Paulo se destaca no quadrante de gastos mais altos e desempenho também mais alto. Como o gráfico é dinâmico, o usuário pode selecionar outros estados para fazer outras comparações. 
+
+A segunda aba reflete o filtro sobre municípios e tem como valor default a cidade com a escola de maior pontuação. A terceira aba permite acompanhar a posição de escolas que o usuário selecionar. A escola selecionada por default é a de maior nota de IDEB.
+
+
+Column {data-width=300}
+-----------------------------------------------------------------------
+
+
+### IDEB x despesa da escola (gasto/aluno)
+
+```{r}
+
+library(viridis)
+#names(df_outliers)
+df_outliers$CO_MUNICIPIO <- as.numeric(df_outliers$Cod_Municipio)
+
+mun_outliers<- df_outliers$CO_MUNICIPIO[df_outliers$CO_MUNICIPIO!=3550308]
+
+
+renderPlot({
+    df_join_cluster_finais%>%
+    anti_join(df_outliers) %>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas)%>% #,
+         #desp_trata_outlier=ifelse(CO_MUNICIPIO%in%mun_outliers,NA,desp_aluno_mat)) 
+  ggplot(aes(x=proxy_custo_escola, y = Indicador_Escola))+
+  geom_point(aes(color=desp_aluno_mat), size=2, alpha=0.5)+
+
+  #geom_point(data = df_uf_sel,aes(color=factor(df_uf_sel$UF, levels = input$i_UF )), size=2)+  
+  #scale_color_manual(values = sequenciaCoresAmpliada(df_paleta,sentido="fq",  num_cores = NROW(input$i_UF)))+  
+  scale_color_viridis(discrete=FALSE)+
+  scale_x_log10(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+  theme_light() +
+  labs(color=str_wrap("Gasto por aluno",6),
+       x="Proxy despesa da escola",
+       y="Indicador IDEB da escola")
+
+  
+})
+
+```
+
+
+### IDEB x despesa por aluno matriculado (alunos/escola)
+
+```{r}
+
+library(viridis)
+#names(df_outliers)
+df_outliers$CO_MUNICIPIO <- as.numeric(df_outliers$Cod_Municipio)
+
+mun_outliers<- df_outliers$CO_MUNICIPIO[df_outliers$CO_MUNICIPIO!=3550308]
+
+
+renderPlot({
+    df_join_cluster_finais%>%
+    anti_join(df_outliers) %>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas)%>% #,
+         #desp_trata_outlier=ifelse(CO_MUNICIPIO%in%mun_outliers,NA,desp_aluno_mat)) 
+  ggplot(aes(x=proxy_custo_escola, y = Indicador_Escola))+
+  geom_point(aes(color=num_matriculas), size=2, alpha=0.5)+
+
+  #geom_point(data = df_uf_sel,aes(color=factor(df_uf_sel$UF, levels = input$i_UF )), size=2)+  
+  #scale_color_manual(values = sequenciaCoresAmpliada(df_paleta,sentido="fq",  num_cores = NROW(input$i_UF)))+  
+  scale_color_viridis(discrete=FALSE)+
+  scale_x_log10(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+  theme_light() +
+  labs(color="Alunos",
+       x="Proxy despesa da escola",
+       y="Indicador IDEB da escola")
+
+  
+})
+
+```
+
+
+Column {.tabset}
+-----------------------------------------------------------------------
+
+
+
+### Estado
+
+```{r fig.height=5}
+library(viridis)
+#source("palette_STN.R")
+
+#df_paleta<- new_Palette()
+
+renderPlot({
+  
+  print(input$i_UF)
+  
+  df_uf_sel<- df_join_cluster_finais%>%
+  filter(UF %in% input$i_UF)%>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas) 
+
+  
+  
+  df_join_cluster_finais%>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas) %>%
+  ggplot(aes(x=proxy_custo_escola, y = Indicador_Escola))+
+  geom_point(color="lightgrey", size=3)+
+
+  geom_point(data = df_uf_sel,aes(color=factor(df_uf_sel$UF, levels = input$i_UF )), size=3, alpha=0.5)+  #
+  #scale_color_manual(values = sequenciaCoresAmpliada(df_paleta,sentido="fq",  num_cores = NROW(input$i_UF)))+  
+  scale_color_viridis(discrete=TRUE)+
+  scale_x_log10(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+  theme_light() +
+  labs(color="UF",
+       x="Proxy despesa da escola",
+       y="Indicador IDEB da escola")
+
+  
+})
+```
+
+
+### Município
+
+```{r fig.height=5}
+library(viridis)
+#source("palette_STN.R")
+
+#df_paleta<- new_Palette()
+
+renderPlot({
+  
+  
+  mun_sel <- substr(input$i_mun,1,7)
+  
+  
+  
+  df_mun_sel<- df_join_cluster_finais%>%
+  filter(CO_MUNICIPIO %in% mun_sel)%>%
+  inner_join(municipios)%>%
+  mutate(nome_municipio=str_sub(Instituicao,25,300),
+          proxy_custo_escola=desp_aluno_mat*num_matriculas)
+  
+  print(df_mun_sel)
+
+  
+  
+  df_join_cluster_finais%>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas) %>%
+  ggplot(aes(x=proxy_custo_escola, y = Indicador_Escola))+
+  geom_point(color="lightgrey", size=3)+
+  geom_point(data = df_mun_sel,aes(color=str_wrap(df_mun_sel$nome_municipio,20)), size=3, alpha=0.5)+  
+  #scale_color_manual(values = sequenciaCoresAmpliada(df_paleta,sentido="fq",  num_cores = NROW(input$i_UF)))+  
+  scale_color_viridis(discrete=TRUE)+
+  scale_x_log10(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+  theme_light() +
+  labs(color="Município",
+       x="Proxy despesa da escola",
+       y="Indicador IDEB da escola")
+
+  
+})
+```
+
+### Escola
+
+```{r fig.height=5}
+library(viridis)
+#source("palette_STN.R")
+
+#df_paleta<- new_Palette()
+
+renderPlot({
+  
+  
+  
+  df_escola_sel<- df_join_cluster_finais%>%
+  filter(Nome_Escola %in% input$i_escola)%>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas) 
+
+  
+  
+  df_join_cluster_finais%>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas) %>%
+  ggplot(aes(x=proxy_custo_escola, y = Indicador_Escola))+
+  geom_point(color="lightgrey", size=3)+
+  geom_point(data = df_escola_sel,aes(color=str_wrap(df_escola_sel$Nome_Escola, 20)), size=3)+  
+  #scale_color_manual(values = sequenciaCoresAmpliada(df_paleta,sentido="fq",  num_cores = NROW(input$i_UF)))+  
+  scale_color_viridis(discrete=TRUE)+
+  scale_x_log10(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+  theme_light() +
+  labs(color="Escola",
+       x="Proxy despesa da escola",
+       y="Indicador IDEB da escola")
+
+  
+})
+```
+
+Análise por outras variáveis
+=====================================  
+
+Inputs {.sidebar data-width=200}
+-----------------------------------------------------------------------
+
+```{r}
+library(stringr)
+
+variaveis<- str_sub(str_replace_all(names(df_join_cluster_finais)[7:29],"_"," "),4,200)
+
+
+  
+selectInput ("i_var_1","Escolha a variável para gráfico 1", choices =variaveis, selected = variaveis[18] ,multiple = FALSE)
+
+selectInput ("i_var_2","Escolha a variável para gráfico 2", choices =variaveis, selected = variaveis[21] ,multiple = FALSE)
+
+selectInput ("i_var_3","Escolha a variável para gráfico 3", choices =variaveis, selected = variaveis[19] ,multiple = FALSE)
+
+selectInput ("i_var_4","Escolha a variável para gráfico 4", choices =variaveis, selected = variaveis[10] ,multiple = FALSE)
+
+
+
+```
+
+
+Column
+-----------------------------------------------------------------------
+
+### Variáveis de infra-estrutura
+
+Além da variável Estado, o uso do algoritmo de classificação permitiu identificar outras variáveis importantes. Os quatro gráficos ao lado mostram por default essas variáveis.
+
+A variável mais importante é a presença de quadra de esportes nas escolas. Observa-se que as quadras de esportes estão relacionadas principalmente às escolas com maior gasto e além disso, parece haver um relacionamento forte entre a presença de quadra de esportes e um maior indicador de IDEB para as séries finais do ensino fundamental municipal.
+
+A seguda variável de destaque é a que trata da presença de internet. Percebe-se que esse recurso está presente em um número grande de escolas, com exceção das que têm baixa despesa. Nota-se ainda que as escolas que não têm internet estão bastante associadas a baixas notas do IDEB. 
+
+A terceira variável trata da existência de biblioteca. Nesse caso percebe-se que há uma predominância um pouco maior de escolas sem esse equipamento. As escolas que possuem biblioteca estão associados a uma maior despesa e também a médias mais elevadas de IDEB, considerando aqui que há um ponto de corte entre notas altas e notas baixas em torno da média 4.
+
+A última variável relevante é a presença de água de rede pública. Percebe-se que a quantidade de escolas que é servida desse recurso é maior do que as que possuem quadra de esportes e biliobeca e menor do que as escolas com internet. Para essa variável, nota-se uma predominância nas escolas com maior despesa e o efeito parece ser favorável a maior média de IDEB
+
+As quatro variáveis citadas nos parágrafos anteriores podem ser substituídas por outras que compõem a tabela de Escolas do Censo Escolar do INEP. As outras variáveis não são tão importantes para análise do gasto das escolas nos equipamentos escolares e também para a determinação de nota do IDEB, porém são úteis para ter uma ideia da universalização e/ou ausência de elementos que ajudam a caracterizar as escolas brasileiras.
+
+Column
+-----------------------------------------------------------------------
+
+### Gráfico 1
+
+```{r}
+renderPlot({
+  
+    var<-input$i_var_1
+    
+    var<-paste0("IN_",str_replace_all(var," ","_"))
+  
+    df_join_cluster_finais%>%
+    anti_join(df_outliers) %>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas)%>% #,
+         #desp_trata_outlier=ifelse(CO_MUNICIPIO%in%mun_outliers,NA,desp_aluno_mat)) 
+  ggplot(aes(x=proxy_custo_escola, y = Indicador_Escola))+
+  geom_point(aes(color=factor(!!sym(var), labels = c("Não", "Sim") )), size=2 ,alpha=0.5)+
+  scale_color_viridis(discrete=TRUE)+
+  scale_x_log10(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+  theme_light() +
+  labs(color=str_wrap(input$i_var_1,10) ,
+       x="Proxy despesa da escola",
+       y="Indicador IDEB da escola")
+
+  
+})
+
+```
+
+
+### Gráfico 2
+
+```{r}
+renderPlot({
+  
+    var<-input$i_var_2
+    
+    var<-paste0("IN_",str_replace_all(var," ","_"))
+  
+    df_join_cluster_finais%>%
+    anti_join(df_outliers) %>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas)%>% #,
+         #desp_trata_outlier=ifelse(CO_MUNICIPIO%in%mun_outliers,NA,desp_aluno_mat)) 
+  ggplot(aes(x=proxy_custo_escola, y = Indicador_Escola))+
+  geom_point(aes(color=factor(!!sym(var), labels = c("Não", "Sim") )), size=2 ,alpha=0.5)+
+  scale_color_viridis(discrete=TRUE)+
+  scale_x_log10(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+  theme_light() +
+  labs(color=str_wrap(input$i_var_2,10),
+       x="Proxy despesa da escola",
+       y="Indicador IDEB da escola")
+
+  
+})
+
+```
+
+
+Column
+-----------------------------------------------------------------------
+
+### Gráfico 3
+
+```{r}
+renderPlot({
+  
+    var<-input$i_var_3
+    
+    
+    var<-paste0("IN_",str_replace_all(var," ","_"))
+  
+    df_join_cluster_finais%>%
+    anti_join(df_outliers) %>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas)%>% #,
+         #desp_trata_outlier=ifelse(CO_MUNICIPIO%in%mun_outliers,NA,desp_aluno_mat)) 
+  ggplot(aes(x=proxy_custo_escola, y = Indicador_Escola))+
+  geom_point(aes(color=factor(!!sym(var), labels = c("Não", "Sim") )), size=2 ,alpha=0.5)+
+  scale_color_viridis(discrete=TRUE)+
+  scale_x_log10(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+  theme_light() +
+  labs(color=str_wrap(input$i_var_3,10),
+       x="Proxy despesa da escola",
+       y="Indicador IDEB da escola")
+
+  
+})
+
+```
+
+
+### Gráfico 4
+
+```{r}
+renderPlot({
+  
+    var<-input$i_var_4
+    
+    var<-paste0("IN_",str_replace_all(var," ","_"))
+  
+    df_join_cluster_finais%>%
+    anti_join(df_outliers) %>%
+  mutate(proxy_custo_escola=desp_aluno_mat*num_matriculas)%>% #,
+         #desp_trata_outlier=ifelse(CO_MUNICIPIO%in%mun_outliers,NA,desp_aluno_mat)) 
+  ggplot(aes(x=proxy_custo_escola, y = Indicador_Escola))+
+  geom_point(aes(color=factor(!!sym(var), labels = c("Não", "Sim") )), size=2 ,alpha=0.5)+
+  scale_color_viridis(discrete=TRUE)+
+  scale_x_log10(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+  theme_light() +
+  labs(color=str_wrap(input$i_var_4,10),
+       x="Proxy despesa da escola",
+       y="Indicador IDEB da escola")
+
+  
+})
+
+```
